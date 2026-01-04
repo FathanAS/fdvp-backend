@@ -1,0 +1,16 @@
+﻿  // 6. EDIT MESSAGE (Real-time sync)
+  @SubscribeMessage('editMessage')
+  handleEditMessage(@MessageBody() payload: { roomId: string; messageId: string; newText: string }) {
+    this.server.to(payload.roomId).emit('messageEdited', {
+      messageId: payload.messageId,
+      newText: payload.newText
+    });
+  }
+
+  // 7. DELETE MESSAGES (Real-time sync)
+  @SubscribeMessage('deleteMessages')
+  handleDeleteMessages(@MessageBody() payload: { roomId: string; messageIds: string[] }) {
+    this.server.to(payload.roomId).emit('messageDeleted', {
+      messageIds: payload.messageIds
+    });
+  }
