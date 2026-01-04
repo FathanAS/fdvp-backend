@@ -256,4 +256,61 @@ export class UsersService {
       }
     };
   }
+
+  // 7. SAVE FCM TOKEN
+  async saveFcmToken(userId: string, token: string) {
+    if (!token) return;
+    const userRef = this.firestore.collection('users').doc(userId);
+    // Gunakan arrayUnion agar tidak duplikat
+    await userRef.update({
+      fcmTokens: FieldValue.arrayUnion(token)
+    });
+    return { message: 'Token saved' };
+  }
+
+  // 8. SEND PUSH NOTIFICATION
+  async sendPushNotification(recipientId: string, title: string, body: string) {
+    try {
+      const userDoc = await this.firestore.collection('users').doc(recipientId).get();
+      const userData = userDoc.data();
+      const tokens = userData?.fcmTokens || [];
+
+      if (!tokens || tokens.length === 0) return;
+
+      // Import admin dynamically or use global if available. 
+      // Since we didn't import admin globally, let's try to import it at top.
+      const admin = await import('firebase-admin');
+
+      const message = {
+        notification: { title, body },
+        tokens: tokens,
+        android: { priority: 'high' as const },
+        // Add data for handling click
+        data: {
+          url: '/chat',
+          click_action: 'FLUTTER_NOTIFICATION_CLICK' // Standard for many, or just generic
+        }
+      };
+
+      const response = await admin.messaging().sendEachForMulticast(message);
+
+      // Cleanup invalid tokens
+      if (response.failureCount > 0) {
+        const failedTokens: string[] = [];
+        response.responses.forEach((resp, idx) => {
+          if (!resp.success) {
+            failedTokens.push(tokens[idx]);
+          }
+        });
+        if (failedTokens.length > 0) {
+          await this.firestore.collection('users').doc(recipientId).update({
+            fcmTokens: FieldValue.arrayRemove(...failedTokens)
+          });
+        }
+      }
+
+    } catch (error) {
+      console.error("FCM Send Error:", error);
+    }
+  }
 }

@@ -52,4 +52,9 @@ export class UsersController {
   async updateRole(@Param('id') id: string, @Body('role') role: string) {
     return this.usersService.updateRole(id, role);
   }
+
+  @Post('fcm-token')
+  saveFcmToken(@Body() body: { userId: string; token: string }) {
+    return this.usersService.saveFcmToken(body.userId, body.token);
+  }
 }

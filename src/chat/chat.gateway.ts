@@ -2,6 +2,7 @@ import { WebSocketGateway, WebSocketServer, SubscribeMessage, MessageBody, Conne
 import { Server, Socket } from 'socket.io';
 import { Inject, OnModuleInit } from '@nestjs/common';
 import { Firestore, FieldValue } from 'firebase-admin/firestore';
+import { UsersService } from '../users/users.service';
 
 @WebSocketGateway({
   cors: {
@@ -12,7 +13,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
   @WebSocketServer()
   server: Server;
 
-  constructor(@Inject('FIREBASE_CONNECTION') private firestore: Firestore) { }
+  constructor(
+    @Inject('FIREBASE_CONNECTION') private firestore: Firestore,
+    private usersService: UsersService
+  ) { }
 
   // RESET STATUS SAAT SERVER RESTART
   async onModuleInit() {
@@ -191,6 +195,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
       const isRecipientInRoom = socketsInRoom.some((s: any) => s.handshake.query.userId === recipientId);
 
       if (!isRecipientInRoom) {
+        // Socket Notification (Foreground/Background Tab)
         this.server.to(recipientId).emit('receiveNotification', {
           senderName,
           senderPhoto,
@@ -198,6 +203,14 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
           senderId,
           roomId
         });
+
+        // FCM Push Notification (Terminated/Background App)
+        // Kirim Push Notification via FCM
+        try {
+          this.usersService.sendPushNotification(recipientId, senderName, text);
+        } catch (e) {
+          console.error("Failed to send FCM push", e);
+        }
       }
     }
   }
