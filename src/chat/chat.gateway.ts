@@ -1,7 +1,7 @@
 import { WebSocketGateway, WebSocketServer, SubscribeMessage, MessageBody, ConnectedSocket, OnGatewayConnection, OnGatewayDisconnect } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { Inject, OnModuleInit } from '@nestjs/common';
-import { Firestore } from 'firebase-admin/firestore';
+import { Firestore, FieldValue } from 'firebase-admin/firestore';
 
 @WebSocketGateway({
   cors: {
@@ -162,20 +162,24 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
       updatedAt: new Date().toISOString(),
     };
 
-    // Update Inbox Pengirim
+    // Update Inbox Pengirim (Reset unread buat sendiri)
     await this.firestore.collection('conversations').doc(senderId).collection('active').doc(recipientId).set({
       ...conversationData,
       partnerId: recipientId,
       uid: recipientId
     }, { merge: true });
 
-    // Update Inbox Penerima
+    // Update Inbox Penerima (INCREMENT UNREAD)
+    // Gunakan set dengan merge, tapi increment butuh FieldValue
+    // Kita lakukan update terpisah atau gunakan logic manual jika FieldValue sulit di-mock/import di sini
+    // Tapi sebaiknya pakai FieldValue.increment(1)
     await this.firestore.collection('conversations').doc(recipientId).collection('active').doc(senderId).set({
       ...conversationData,
       partnerId: senderId,
       partnerName: senderName || "Unknown",
-      partnerPhoto: senderPhoto || "", // Pastikan foto terbaru tersimpan di inbox lawan
-      uid: senderId
+      partnerPhoto: senderPhoto || "",
+      uid: senderId,
+      unreadCount: FieldValue.increment(1) // <--- INCREMENT BADGE
     }, { merge: true });
 
     // 2. KIRIM KE PENERIMA (DI DALAM ROOM CHAT)
@@ -189,7 +193,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
       if (!isRecipientInRoom) {
         this.server.to(recipientId).emit('receiveNotification', {
           senderName,
-          senderPhoto, // Foto dari DB (pasti ada jika user punya)
+          senderPhoto,
           text,
           senderId,
           roomId
@@ -198,23 +202,31 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
     }
   }
 
-  // 3. READ MESSAGE (Saat user membuka chat / scroll) - Fitur Checklist Biru
+  // 3. READ MESSAGE (Saat user membuka chat / scroll) - Fitur Checklist Biru & RESET BADGE
   @SubscribeMessage('readMessage')
   async handleReadMessage(@MessageBody() payload: { roomId: string; userId: string; messageIds: string[] }) {
     // payload.userId adalah si PEMBACA (Penerima)
+    // Maka kita reset unreadCount di Inbox dia terhadap Partner
 
-    // Batch update di Firestore (Tandai as Read)
+    const [userA, userB] = payload.roomId.split('_');
+    const partnerId = userA === payload.userId ? userB : userA;
+
+    // 1. Reset Badge Conversation
+    await this.firestore.collection('conversations')
+      .doc(payload.userId)
+      .collection('active')
+      .doc(partnerId)
+      .set({ unreadCount: 0 }, { merge: true });
+
+    // 2. Batch update di Firestore (Tandai as Read) messages
     const batch = this.firestore.batch();
-
     payload.messageIds.forEach(msgId => {
       const ref = this.firestore.collection('messages').doc(msgId);
       batch.update(ref, { isRead: true });
     });
-
     await batch.commit();
 
-    // Beritahu PENGIRIM bahwa pesan sudah dibaca
-    // Emit ke Room agar UI pengirim berubah jadi Biru
+    // 3. Emit update
     this.server.to(payload.roomId).emit('messagesReadUpdate', {
       messageIds: payload.messageIds
     });
