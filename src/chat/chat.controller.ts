@@ -9,18 +9,22 @@ export class ChatController {
     @Get('history/:roomId')
     async getChatHistory(@Param('roomId') roomId: string, @Query('userId') userId: string) {
         try {
+            // HAPUS .orderBy() agar tidak butuh Composite Index di Firebase Console
             const snapshot = await this.firestore.collection('messages')
                 .where('roomId', '==', roomId)
-                .orderBy('createdAt', 'asc')
                 .get();
 
-            // Filter manual: Jangan tampilkan pesan jika ID user ada di array 'deletedBy'
-            return snapshot.docs
+            // Sort manual di server (In-Memory Sort)
+            const messages = snapshot.docs
                 .map(doc => ({ id: doc.id, ...doc.data() }))
-                .filter((msg: any) => !msg.deletedBy?.includes(userId)); // <--- LOGIKA BARU
+                .filter((msg: any) => !msg.deletedBy?.includes(userId))
+                .sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+            return messages;
 
         } catch (error) {
-            console.error(error);
+            console.error("Error fetching history:", error);
+            // Return empty array on error prevents crash, but we should log it clearly
             return [];
         }
     }
