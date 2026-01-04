@@ -269,7 +269,7 @@ export class UsersService {
   }
 
   // 8. SEND PUSH NOTIFICATION
-  async sendPushNotification(recipientId: string, title: string, body: string) {
+  async sendPushNotification(recipientId: string, title: string, body: string, dataPayload: any = {}) {
     try {
       const userDoc = await this.firestore.collection('users').doc(recipientId).get();
       const userData = userDoc.data();
@@ -277,18 +277,29 @@ export class UsersService {
 
       if (!tokens || tokens.length === 0) return;
 
-      // Import admin dynamically or use global if available. 
-      // Since we didn't import admin globally, let's try to import it at top.
       const admin = await import('firebase-admin');
 
+      // DATA-ONLY PAYLOAD (Hybrid Sync Strategy)
+      // This forces the Service Worker to handle the display, ensuring consistency.
       const message = {
-        notification: { title, body },
         tokens: tokens,
-        android: { priority: 'high' as const },
-        // Add data for handling click
         data: {
-          url: '/chat',
-          click_action: 'FLUTTER_NOTIFICATION_CLICK' // Standard for many, or just generic
+          title,
+          body,
+          type: 'chat_message',
+          click_action: '/chat',
+          timestamp: new Date().toISOString(),
+          ...dataPayload
+        },
+        android: { priority: 'high' as const },
+        webpush: {
+          headers: {
+            Urgency: "high",
+            TTL: "86400" // 24 hours
+          },
+          fcmOptions: {
+            link: "/chat"
+          }
         }
       };
 

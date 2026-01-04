@@ -96,27 +96,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
   async handleJoinRoom(@MessageBody() data: { roomId: string }, @ConnectedSocket() client: Socket) {
     client.join(data.roomId);
     console.log(`Client ${client.id} joined room ${data.roomId}`);
-
-    // FETCH CHAT HISTORY (Load chat lama)
-    // Note: Pastikan index Firestore dibuat untuk query: collection: messages, fields: roomId (Asc), createdAt (Asc)
-    // FETCH CHAT HISTORY (Load chat lama)
-    // Removed orderBy to avoid missing index error
-    const snapshot = await this.firestore.collection('messages')
-      .where('roomId', '==', data.roomId)
-      .get();
-
-    const messages = snapshot.docs
-      .map(doc => {
-        const data = doc.data();
-        return {
-          id: data.id || doc.id,
-          ...data
-        };
-      })
-      .sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-
-    // Kirim history HANYA ke user yang baru join
-    client.emit('loadPreviousMessages', messages);
   }
 
   // 2. SEND MESSAGE (Saat user kirim pesan)
