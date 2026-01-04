@@ -284,18 +284,41 @@ export class UsersService {
       const message = {
         tokens: tokens,
         data: {
-          title,
-          body,
+          title: String(title),
+          body: String(body),
           type: 'chat_message',
           click_action: '/chat',
           timestamp: new Date().toISOString(),
-          ...dataPayload
+          ...Object.entries(dataPayload).reduce((acc, [k, v]) => ({ ...acc, [k]: String(v) }), {}) // Ensure all values are strings
         },
-        android: { priority: 'high' as const },
+        // ANDROID CONFIG
+        android: {
+          priority: 'high' as const,
+          notification: {
+            channelId: 'high_importance_channel',
+            priority: 'max' as const,
+            defaultSound: true
+          },
+          ttl: 86400 * 1000 // 24 hours in ms
+        },
+        // APPLE / iOS CONFIG (Critical for PWA/Container apps)
+        apns: {
+          payload: {
+            aps: {
+              'content-available': 1, // Wake up app
+              'mutable-content': 1,
+              category: 'CHAT_MESSAGE'
+            }
+          },
+          headers: {
+            'apns-priority': '10', // High priority
+          }
+        },
+        // WEB PUSH CONFIG
         webpush: {
           headers: {
             Urgency: "high",
-            TTL: "86400" // 24 hours
+            TTL: "86400"
           },
           fcmOptions: {
             link: "/chat"
