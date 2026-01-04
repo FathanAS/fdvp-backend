@@ -10,11 +10,25 @@ import { resolve } from 'path';
       useFactory: () => {
         // Mencegah error inisialisasi ganda saat hot-reload
         if (!admin.apps.length) {
-          // Ambil file JSON yang tadi kita taruh di root
-          const serviceAccountPath = resolve('./serviceAccountKey.json');
-          
+          let credential;
+
+          // Cek apakah ada environment variable (Production / Railway)
+          if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+            try {
+              const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+              credential = admin.credential.cert(serviceAccount);
+            } catch (error) {
+              console.error('Gagal parsing FIREBASE_SERVICE_ACCOUNT:', error);
+              throw error;
+            }
+          } else {
+            // Fallback ke file lokal (Development)
+            const serviceAccountPath = resolve('./serviceAccountKey.json');
+            credential = admin.credential.cert(require(serviceAccountPath));
+          }
+
           admin.initializeApp({
-            credential: admin.credential.cert(require(serviceAccountPath)),
+            credential,
           });
         }
         return admin.firestore(); // Kita export Firestore-nya langsung
@@ -23,4 +37,4 @@ import { resolve } from 'path';
   ],
   exports: ['FIREBASE_CONNECTION'], // Izinkan module lain pakai provider ini
 })
-export class FirebaseModule {}
+export class FirebaseModule { }
